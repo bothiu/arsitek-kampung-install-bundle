@@ -31,7 +31,7 @@ python3 scripts/generate_bundle.py
 ```
 
 Default output target:
-- `/opt/data/workspace/arsitek-kampung-install-bundle`
+- `/home/runner/work/arsitek-kampung/arsitek-kampung-install-bundle`
 
 ## Catatan
 
