@@ -353,7 +353,6 @@ Kalau user memberi satu endpoint seperti `/api/orders`, lakukan:
 9. Mengabaikan referensi endpoint di frontend-heavy app.
 10. Membiarkan noise crawl mengalahkan bukti code yang lebih kuat.
 
-
 ## Support Files
 
 Distribusi bundle ini **meng-embed** file pendukung langsung ke dalam `SKILL.md` karena beberapa installer komunitas hanya menyalin satu file.
