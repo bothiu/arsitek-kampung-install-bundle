@@ -1,7 +1,7 @@
 ---
 name: arsitek-kampung
-description: "Use when the user wants to discover and document website or project endpoints into a markdown inventory using hybrid code inspection and conditional crawling for verified Next.js targets."
-version: 1.2.1
+description: "Use when the user wants to discover and document website or project endpoints into a markdown inventory using hybrid code inspection, conditional Next.js crawling, or non-Next public-site surface audit."
+version: 1.2.2
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos]
@@ -24,8 +24,9 @@ Filosofi skill ini:
 1. **hybrid by default**
 2. **code inspection dulu**
 3. **crawl hanya kalau perlu**
-4. untuk cabang crawl, **browser/web crawling hanya boleh dipakai kalau target sudah terverifikasi Next.js**
-5. untuk ekstraksi endpoint dari JavaScript pada cabang crawl Next.js, gunakan **LinkFinder**
+4. untuk cabang crawl penuh, **browser/web crawling hanya boleh dipakai kalau target sudah terverifikasi Next.js**
+5. untuk target non-Next public website, pakai **public-site audit mode** yang ringan, berbukti, dan tidak agresif
+6. untuk ekstraksi endpoint dari JavaScript pada cabang crawl Next.js, gunakan **LinkFinder**
 
 Skill ini fokus pada **inventaris endpoint yang rapi, berbukti, dan bisa diaudit ulang**. Ini **bukan** skill pentest, brute-force, fuzzing, atau eksploitasi.
 
@@ -84,18 +85,48 @@ Pakai saat target utama adalah website live dan user ingin pemetaan surface ekst
 
 Kalau target **bukan** Next.js, jangan pakai browser crawl sebagai jalur utama skill ini. Fallback ke:
 - code inspection
-- lightweight surface check
+- public-site audit mode
 - dokumentasi keterbatasan hasil
 
-### 3. Hybrid mode
+### 3. Public-site audit mode (non-Next)
+Pakai saat target utama adalah website live publik, tetapi target **tidak** terverifikasi Next.js atau user hanya butuh pemetaan surface ringan.
+
+Tujuan mode ini:
+- memetakan halaman publik, auth surface, redirect penting, dan support endpoints
+- mengambil bukti dari HTML, link publik, `robots.txt`, `sitemap`, dan metadata/JSON inline yang terlihat publik
+- mendokumentasikan pola route dan subdomain aplikasi yang tampak dari surface live
+
+Mode ini **boleh** memakai browser atau HTTP fetch ringan untuk observasi halaman publik, tetapi **tidak** dipakai untuk:
+- brute-force path guessing
+- JS endpoint mining agresif
+- LinkFinder pada target non-Next
+- enumerasi yang berpotensi menyerupai security scan
+
+Sumber yang diperiksa di mode ini:
+- homepage links
+- navigasi, footer, CTA, dan public redirects
+- `robots.txt`
+- sitemap index / child sitemap
+- canonical URL, alternate URL, app context inline, atau config JSON yang memang terekspos publik
+- host/subdomain publik yang terlihat jelas dari response
+
+Output khas mode ini:
+- `Public Pages`
+- `Auth / Account Surfaces`
+- `Commerce / Support Surfaces`
+- `Static / Support`
+- `Dynamic / Inferred Routes`
+
+### 4. Hybrid mode
 Ini mode default.
 
 Urutan kerja:
 1. deteksi stack
 2. scan route dan referensi endpoint dari codebase dulu
 3. kalau ada target live dan Next.js sudah terverifikasi, jalankan cabang crawl
-4. gabungkan semua hasil ke satu laporan markdown
-5. tandai mana yang confirmed, inferred, dan candidate
+4. kalau target live bukan Next.js, jalankan public-site audit mode
+5. gabungkan semua hasil ke satu laporan markdown
+6. tandai mana yang confirmed, inferred, dan candidate
 
 ## Next.js Verification Gate
 
@@ -118,7 +149,7 @@ Cari satu atau lebih sinyal berikut:
 - source HTML / script chunk khas Next.js
 - pola route/data khas App Router atau Pages Router
 
-Kalau Next.js tidak terverifikasi, tulis jelas di laporan bahwa **cabang crawl dilewati oleh policy skill**.
+Kalau Next.js tidak terverifikasi, tulis jelas di laporan bahwa **cabang crawl dilewati oleh policy skill** dan pindah ke **public-site audit mode** bila target live tetap perlu dipetakan.
 
 ## Aturan LinkFinder
 
@@ -206,6 +237,8 @@ Perlakukan dulu sebagai:
 - menu / footer / static links
 - callback/API path yang terekspos di public page
 - JS bundle / chunk / route assets
+- redirect target penting (`/login` -> subdomain account, `/sell` -> subdomain commerce, dll.)
+- app context / inline JSON publik yang mengungkap base URL atau subdomain aplikasi
 
 ## Aturan Klasifikasi
 
@@ -216,6 +249,7 @@ Setiap endpoint di laporan harus punya label asal / confidence.
 - `confirmed-live` — teramati langsung dari surface live
 - `linkfinder-discovered` — ditemukan dari JS via LinkFinder
 - `inferred-dynamic` — route dinamis terduga dari konvensi code
+- `redirect-confirmed` — surface teramati lewat redirect publik yang konsisten
 - `unverified` — kandidat ada, tapi belum bisa dipastikan
 
 ### Kategori endpoint yang direkomendasikan
@@ -223,6 +257,7 @@ Setiap endpoint di laporan harus punya label asal / confidence.
 - `api`
 - `auth`
 - `admin`
+- `commerce-or-checkout`
 - `webhook`
 - `static-or-support`
 
@@ -293,7 +328,16 @@ Struktur minimal yang direkomendasikan:
 5. dedupe hasil dan cocokkan ke code
 6. tulis laporan final dengan label confidence
 
-### Recipe C — Mulai dari satu endpoint
+### Recipe C — Public-site audit non-Next
+1. fetch homepage dan deteksi sinyal stack
+2. jika Next.js tidak lolos, aktifkan `public-site audit mode`
+3. ambil public links utama dari homepage/navigation
+4. cek `robots.txt` dan sitemap yang diumumkan publik
+5. cek redirect penting untuk auth/account/sell/checkout surface
+6. simpulkan pola route dinamis dari sitemap atau URL publik yang konsisten
+7. tulis laporan final dan tandai keterbatasan bahwa JS mining/crawl penuh tidak dipakai
+
+### Recipe D — Mulai dari satu endpoint
 Kalau user memberi satu endpoint seperti `/api/orders`, lakukan:
 1. cari endpoint exact match di code
 2. cari keluarga path terkait: `/api/order`, `/api/orders/*`, `orders/[id]`
@@ -320,22 +364,28 @@ Kalau user memberi satu endpoint seperti `/api/orders`, lakukan:
 
 5. **Terapkan Next.js verification gate**
    - kalau lolos dan crawl memang in-scope, lanjut
-   - kalau tidak, skip browser/web crawl dan tulis alasannya
+   - kalau tidak, skip crawl penuh, pindah ke `public-site audit mode`, dan tulis alasannya
 
-6. **Pakai LinkFinder hanya untuk cabang crawl**
+6. **Pakai LinkFinder hanya untuk cabang crawl Next.js**
    - targetkan JS asset yang relevan
    - kumpulkan kandidat endpoint
    - dedupe hasil
    - simpan sebagai `linkfinder-discovered` dulu
 
-7. **Normalisasi dan gabungkan temuan**
+7. **Kalau mode non-Next public-site aktif, fokus ke bukti ringan**
+   - homepage links
+   - robots/sitemap
+   - redirect publik
+   - inline app-context/config yang memang terlihat publik
+
+8. **Normalisasi dan gabungkan temuan**
    - satukan route code, URL live, dan hasil JS
    - rapikan slash, query string, dan duplikat
 
-8. **Tulis laporan markdown**
+9. **Tulis laporan markdown**
    - wajib ada summary, inventory, evidence, dan gaps
 
-9. **Verifikasi output**
+10. **Verifikasi output**
    - path file jelas
    - endpoint sudah dikelompokkan
    - keputusan pakai/skip crawl terdokumentasi
@@ -352,6 +402,7 @@ Kalau user memberi satu endpoint seperti `/api/orders`, lakukan:
 8. Menimpa file output tanpa menyebut path laporannya.
 9. Mengabaikan referensi endpoint di frontend-heavy app.
 10. Membiarkan noise crawl mengalahkan bukti code yang lebih kuat.
+11. Pada target non-Next, tetap memaksa JS mining agresif padahal sitemap/redirect publik sudah cukup untuk audit surface ringan.
 
 ## Support Files
 
